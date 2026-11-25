@@ -1,5 +1,6 @@
 package com.zachvlat.havenwall.network
 
+import com.zachvlat.havenwall.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -9,13 +10,15 @@ object ApiClient {
 
     private const val BASE_URL = "https://wallhaven.cc/"
 
-    private val okHttpClient = OkHttpClient.Builder()
-        .addInterceptor(
-            HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BASIC
-            }
-        )
-        .build()
+    private val okHttpClient = OkHttpClient.Builder().apply {
+        if (BuildConfig.DEBUG) {
+            addInterceptor(
+                HttpLoggingInterceptor().apply {
+                    level = HttpLoggingInterceptor.Level.BASIC
+                }
+            )
+        }
+    }.build()
 
     private val retrofit = Retrofit.Builder()
         .baseUrl(BASE_URL)

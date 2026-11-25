@@ -13,7 +13,9 @@ interface WallhavenApi {
         @Query("q") query: String,
         @Query("purity") purity: String = "100",
         @Query("ratios") ratios: String = "9x16",
-        @Query("page") page: Int = 1
+        @Query("page") page: Int = 1,
+        @Query("sorting") sorting: String = "date_added",
+        @Query("topRange") topRange: String? = null
     ): WallpaperResponse
 
     @GET("api/v1/w/{id}")

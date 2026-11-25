@@ -2,14 +2,11 @@ package com.zachvlat.havenwall.ui.screens
 
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -40,6 +37,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,6 +65,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -75,6 +74,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
 import coil.compose.AsyncImage
 import coil.imageLoader
+import com.zachvlat.havenwall.R
 import com.zachvlat.havenwall.WallpaperViewModel
 import com.zachvlat.havenwall.data.Tag
 import com.zachvlat.havenwall.data.Wallpaper
@@ -90,8 +90,21 @@ fun WallpaperScreen(
     var selectedTab by remember { mutableStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
+    var homeSort by remember { mutableStateOf("hot") }
+    var homeTopRange by remember { mutableStateOf<String?>(null) }
     var selectedWallpaper by remember { mutableStateOf<Wallpaper?>(null) }
     val focusManager = LocalFocusManager.current
+
+    val goHome: () -> Unit = {
+        isSearchActive = false
+        searchQuery = ""
+        focusManager.clearFocus()
+        viewModel.loadHome(homeSort, homeTopRange)
+    }
+
+    BackHandler(enabled = selectedWallpaper != null || isSearchActive) {
+        if (selectedWallpaper != null) selectedWallpaper = null else goHome()
+    }
 
     Box(
         modifier = modifier
@@ -106,6 +119,13 @@ fun WallpaperScreen(
                         searchQuery = searchQuery,
                         onSearchQueryChange = { searchQuery = it },
                         isSearchActive = isSearchActive,
+                        homeSort = homeSort,
+                        homeTopRange = homeTopRange,
+                        onSort = { sort, topRange ->
+                            homeSort = sort
+                            homeTopRange = topRange
+                            goHome()
+                        },
                         onActivateSearch = {
                             isSearchActive = true
                             viewModel.search(searchQuery)
@@ -126,14 +146,27 @@ fun WallpaperScreen(
 
             NavigationBar {
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Browse") },
-                    label = { Text("Browse") },
+                    icon = {
+                        Icon(
+                            Icons.Default.Home,
+                            contentDescription = stringResource(R.string.nav_browse)
+                        )
+                    },
+                    label = { Text(stringResource(R.string.nav_browse)) },
                     selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 }
+                    onClick = {
+                        selectedTab = 0
+                        if (isSearchActive) goHome()
+                    }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.Favorite, contentDescription = "Favorites") },
-                    label = { Text("Favorites") },
+                    icon = {
+                        Icon(
+                            Icons.Filled.Favorite,
+                            contentDescription = stringResource(R.string.nav_favorites)
+                        )
+                    },
+                    label = { Text(stringResource(R.string.nav_favorites)) },
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 }
                 )
@@ -148,6 +181,7 @@ fun WallpaperScreen(
         WallpaperPreviewDialog(
             wallpaper = wallpaper,
             tags = viewModel.wallpaperDetail?.takeIf { it.id == wallpaper.id }?.tags.orEmpty(),
+            detailError = viewModel.detailError,
             isFavorite = viewModel.isFavorite(wallpaper.id),
             onToggleFavorite = { viewModel.toggleFavorite(wallpaper) },
             onSearchTag = { tag ->
@@ -162,12 +196,16 @@ fun WallpaperScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BrowseTab(
     viewModel: WallpaperViewModel,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     isSearchActive: Boolean,
+    homeSort: String,
+    homeTopRange: String?,
+    onSort: (String, String?) -> Unit,
     onActivateSearch: () -> Unit,
     onSearch: () -> Unit,
     onWallpaperClick: (Wallpaper) -> Unit
@@ -189,104 +227,93 @@ fun BrowseTab(
         }
     }
 
-    AnimatedVisibility(
-        visible = isSearchActive,
-        enter = fadeIn() + slideInVertically(),
-        exit = fadeOut()
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        state = gridState,
+        contentPadding = PaddingValues(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxSize()
     ) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            state = gridState,
-            contentPadding = PaddingValues(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = if (isSearchActive) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                SearchBar(
+                    query = searchQuery,
+                    onQueryChange = onSearchQueryChange,
+                    onSearch = if (isSearchActive) onSearch else onActivateSearch,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                ) {
-                    Text(
-                        text = "HavenWall",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    SearchBar(
-                        query = searchQuery,
-                        onQueryChange = onSearchQueryChange,
-                        onSearch = onSearch,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                    )
-                }
-            }
-
-            items(
-                items = viewModel.wallpapers,
-                key = { it.id }
-            ) { wallpaper ->
-                WallpaperItem(
-                    wallpaper = wallpaper,
-                    onClick = { onWallpaperClick(wallpaper) }
+                        .padding(horizontal = if (isSearchActive) 16.dp else 32.dp)
                 )
-            }
-
-            if (viewModel.isLoading) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
+                if (!isSearchActive) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        CircularProgressIndicator()
+                        FilterChip(
+                            onClick = { onSort("hot", null) },
+                            label = { Text(stringResource(R.string.trending)) },
+                            selected = homeSort == "hot"
+                        )
+                        FilterChip(
+                            onClick = { onSort("toplist", "1w") },
+                            label = { Text(stringResource(R.string.top_week)) },
+                            selected = homeSort == "toplist" && homeTopRange == "1w"
+                        )
+                        FilterChip(
+                            onClick = { onSort("toplist", "1m") },
+                            label = { Text(stringResource(R.string.top_month)) },
+                            selected = homeSort == "toplist" && homeTopRange == "1m"
+                        )
                     }
                 }
             }
+        }
 
-            if (viewModel.errorMessage != null) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text(
-                        text = viewModel.errorMessage ?: "",
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(16.dp)
-                    )
+        items(
+            items = viewModel.wallpapers,
+            key = { it.id }
+        ) { wallpaper ->
+            WallpaperItem(
+                wallpaper = wallpaper,
+                onClick = { onWallpaperClick(wallpaper) }
+            )
+        }
+
+        if (viewModel.isLoading) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
                 }
             }
         }
-    }
 
-    AnimatedVisibility(
-        visible = !isSearchActive,
-        enter = fadeIn(),
-        exit = fadeOut()
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "HavenWall",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            SearchBar(
-                query = searchQuery,
-                onQueryChange = onSearchQueryChange,
-                onSearch = onActivateSearch,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
-            )
+        if (viewModel.errorMessage != null) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = viewModel.errorMessage ?: "",
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
         }
     }
 }
@@ -302,7 +329,7 @@ fun FavoritesTab(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "No favorites yet",
+                text = stringResource(R.string.no_favorites),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -338,7 +365,7 @@ fun SearchBar(
     TextField(
         value = query,
         onValueChange = onQueryChange,
-        placeholder = { Text("Search your wallpaper") },
+        placeholder = { Text(stringResource(R.string.search_hint)) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { onSearch() }),
@@ -360,7 +387,7 @@ fun WallpaperItem(
     onClick: () -> Unit
 ) {
     AsyncImage(
-        model = wallpaper.thumbs.original,
+        model = wallpaper.thumbs.large,
         contentDescription = null,
         contentScale = ContentScale.Crop,
         modifier = Modifier
@@ -376,6 +403,7 @@ fun WallpaperItem(
 fun WallpaperPreviewDialog(
     wallpaper: Wallpaper,
     tags: List<Tag>,
+    detailError: String?,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
     onSearchTag: (String) -> Unit,
@@ -383,6 +411,7 @@ fun WallpaperPreviewDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val metrics = context.resources.displayMetrics
     var isSetting by remember { mutableStateOf(false) }
     var setError by remember { mutableStateOf<String?>(null) }
     val bitmap by produceState<android.graphics.Bitmap?>(
@@ -390,7 +419,7 @@ fun WallpaperPreviewDialog(
         key1 = wallpaper.path
     ) {
         value = withContext(Dispatchers.IO) {
-            loadBitmap(context, wallpaper.path)
+            loadBitmap(context, wallpaper.path, metrics.widthPixels, metrics.heightPixels)
         }
     }
 
@@ -444,7 +473,7 @@ fun WallpaperPreviewDialog(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Favorite,
-                        contentDescription = "Favorite",
+                        contentDescription = stringResource(R.string.favorite),
                         tint = if (isFavorite) Color.Red else Color.White,
                         modifier = Modifier
                             .size(24.dp)
@@ -474,17 +503,29 @@ fun WallpaperPreviewDialog(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
+            if (detailError != null) {
+                Text(
+                    text = detailError ?: "",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             Button(
                 onClick = {
                     isSetting = true
                     setError = null
-                    val imageUrl = wallpaper.path
                     scope.launch {
                         val error = withContext(Dispatchers.IO) {
-                            setWallpaper(context, imageUrl)
+                            bitmap?.let { setWallpaper(context, it) }
                         }
                         if (error == null) {
-                            Toast.makeText(context, "Wallpaper set", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                R.string.wallpaper_set,
+                                Toast.LENGTH_SHORT
+                            ).show()
                             onDismiss()
                         } else {
                             setError = error
@@ -496,7 +537,9 @@ fun WallpaperPreviewDialog(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = if (isSetting) "Setting..." else "Set as Wallpaper"
+                    text = stringResource(
+                        if (isSetting) R.string.setting_wallpaper else R.string.set_wallpaper
+                    )
                 )
             }
 
@@ -515,44 +558,43 @@ fun WallpaperPreviewDialog(
                 onClick = onDismiss,
                 enabled = !isSetting
             ) {
-                Text("Close")
+                Text(stringResource(R.string.close))
             }
         }
     }
 }
 
-private suspend fun loadBitmap(context: Context, imageUrl: String): android.graphics.Bitmap? {
+private suspend fun loadBitmap(
+    context: Context,
+    imageUrl: String,
+    width: Int,
+    height: Int
+): android.graphics.Bitmap? {
     return try {
-        val loader = context.imageLoader
         val request = coil.request.ImageRequest.Builder(context)
             .data(imageUrl)
+            .size(width, height)
             .allowHardware(false)
             .build()
-        loader.execute(request).drawable?.toBitmap()
+        context.imageLoader.execute(request).drawable?.toBitmap()
     } catch (e: Exception) {
         null
     }
 }
 
-private suspend fun setWallpaper(context: Context, imageUrl: String): String? {
+private fun setWallpaper(context: Context, bitmap: android.graphics.Bitmap): String? {
     return try {
-        val bitmap = loadBitmap(context, imageUrl)
-        if (bitmap == null) return "Failed to load image"
-
         val metrics = context.resources.displayMetrics
-        val screenWidth = metrics.widthPixels
-        val screenHeight = metrics.heightPixels
-        val centered = centerCrop(bitmap, screenWidth, screenHeight)
-
+        val centered = centerCrop(bitmap, metrics.widthPixels, metrics.heightPixels)
         val manager = android.app.WallpaperManager.getInstance(context.applicationContext)
         manager.setBitmap(centered)
         null
     } catch (e: Exception) {
-        e.message ?: "Failed to set wallpaper"
+        e.message ?: context.getString(R.string.failed_to_set_wallpaper)
     }
 }
 
-private fun centerCrop(source: android.graphics.Bitmap, targetWidth: Int, targetHeight: Int): android.graphics.Bitmap {
+internal fun centerCrop(source: android.graphics.Bitmap, targetWidth: Int, targetHeight: Int): android.graphics.Bitmap {
     val scale = maxOf(
         targetWidth.toFloat() / source.width,
         targetHeight.toFloat() / source.height

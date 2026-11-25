@@ -10,29 +10,38 @@ class FavoritesManager(context: Context) {
     private val gson = Gson()
     private val key = "favorites"
 
+    private var cache: List<Wallpaper>? = null
+    var readFailed = false
+        private set
+
     fun getFavorites(): List<Wallpaper> {
-        val json = prefs.getString(key, null) ?: return emptyList()
-        return try {
-            val type = object : TypeToken<List<Wallpaper>>() {}.type
-            gson.fromJson(json, type) ?: emptyList()
-        } catch (_: Exception) {
-            emptyList()
+        cache?.let { return it }
+        val json = prefs.getString(key, null)
+        if (json == null) {
+            readFailed = false
+            return emptyList<Wallpaper>().also { cache = it }
         }
+        val list = try {
+            gson.fromJson<List<Wallpaper>>(json, object : TypeToken<List<Wallpaper>>() {}.type)
+        } catch (_: Exception) {
+            null
+        }
+        readFailed = list == null
+        return (list ?: emptyList()).also { cache = it }
     }
 
     fun isFavorite(id: String): Boolean = getFavorites().any { it.id == id }
 
-    fun toggleFavorite(wallpaper: Wallpaper) {
-        val current = getFavorites().toMutableList()
-        if (current.none { it.id == wallpaper.id }) {
-            current.add(wallpaper)
+    fun toggleFavorite(wallpaper: Wallpaper): Boolean {
+        val current = getFavorites()
+        if (readFailed) return false
+        val updated = if (current.any { it.id == wallpaper.id }) {
+            current.filterNot { it.id == wallpaper.id }
         } else {
-            current.removeAll { it.id == wallpaper.id }
+            current + wallpaper
         }
-        save(current)
-    }
-
-    private fun save(list: List<Wallpaper>) {
-        prefs.edit().putString(key, gson.toJson(list)).apply()
+        if (!prefs.edit().putString(key, gson.toJson(updated)).commit()) return false
+        cache = updated
+        return true
     }
 }

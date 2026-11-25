@@ -52,6 +52,5 @@ data class Meta(
     @SerializedName("current_page") val currentPage: Int,
     @SerializedName("last_page") val lastPage: Int,
     @SerializedName("per_page") val perPage: Int,
-    val total: Int,
-    val query: String?
+    val total: Int
 )

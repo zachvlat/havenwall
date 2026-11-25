@@ -1,3 +1,20 @@
 <resources>
     <string name="app_name">HavenWall</string>
+    <string name="nav_browse">Browse</string>
+    <string name="nav_favorites">Favorites</string>
+    <string name="search_hint">Search your wallpaper</string>
+    <string name="trending">Trending</string>
+    <string name="top_week">Top this week</string>
+    <string name="top_month">Top this month</string>
+    <string name="no_favorites">No favorites yet</string>
+    <string name="favorite">Favorite</string>
+    <string name="set_wallpaper">Set as Wallpaper</string>
+    <string name="setting_wallpaper">Setting...</string>
+    <string name="wallpaper_set">Wallpaper set</string>
+    <string name="failed_to_set_wallpaper">Failed to set wallpaper</string>
+    <string name="empty_search">Type something to search</string>
+    <string name="favorites_error">Could not read saved favorites</string>
+    <string name="tags_error">Tags could not load</string>
+    <string name="close">Close</string>
+    <string name="unknown_error">Unknown error occurred</string>
 </resources>
